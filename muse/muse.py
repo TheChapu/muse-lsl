@@ -8,19 +8,22 @@ from sys import platform
 class Muse():
     """Muse 2016 headband"""
 
-    def __init__(self, address=None, callback=None, eeg=True, accelero=False,
+    def __init__(self, address=None, callback=None,acc_data=None,gyro_data=None, eeg=True, accelero=False,
                  giro=False, backend='auto', interface=None, time_func=time,
                  name=None):
         """Initialize"""
         self.address = address
         self.name = name
         self.callback = callback
+        self.acc_data = acc_data
+        self.gyro_data = gyro_data
         self.eeg = eeg
         self.accelero = accelero
         self.giro = giro
         self.interface = interface
         self.time_func = time_func
-
+        
+        
         if backend in ['auto', 'gatt', 'bgapi']:
             if backend == 'auto':
                 if platform == "linux" or platform == "linux2":
@@ -57,11 +60,13 @@ class Muse():
 
         # subscribes to Accelerometer
         if self.accelero:
-            raise(NotImplementedError('Accelerometer not implemented'))
+            self._subscribe_acc()
+            #raise(NotImplementedError('Accelerometer not implemented'))
 
         # subscribes to Giroscope
         if self.giro:
-            raise(NotImplementedError('Giroscope not implemented'))
+            self._subscribe_gyro()
+            #raise(NotImplementedError('Giroscope not implemented'))
 
     def find_muse_address(self, name=None):
         """look for ble device with a muse in the name"""
@@ -109,6 +114,29 @@ class Muse():
         self.device.subscribe('273e0007-4c4d-454d-96be-f03bac821358',
                               callback=self._handle_eeg)
 
+    def _subscribe_acc(self):
+		self.device.subscribe('273e000a-4c4d-454d-96be-f03bac821358',
+							  callback=self._handle_acc)
+							  
+    def _subscribe_gyro(self):
+		self.device.subscribe('273e0009-4c4d-454d-96be-f03bac821358',
+							  callback=self._handle_gyro)
+    
+    
+    def _unpack_acc_channel(self,packet):
+		
+		a = bitstring.Bits(bytes=packet)
+		pattern = "uint:16,uint:16,uint:16,uint:16,uint:16,uint:16,uint:16,uint:16,uint:16,uint:16"
+		res = a.unpack(pattern) # Transforma los datos en 16bit y 12 bit
+		return res
+		
+    def _unpack_gyro_channel(self,packet):
+		
+		a = bitstring.Bits(bytes=packet)
+		pattern = "uint:16,uint:16,uint:16,uint:16,uint:16,uint:16,uint:16,uint:16,uint:16,uint:16"
+		res = a.unpack(pattern) # Transforma los datos en 16bit y 12 bit
+		return res
+    
     def _unpack_eeg_channel(self, packet):
         """Decode data packet of one EEG channel.
 
@@ -144,6 +172,45 @@ class Muse():
         """
         pass
 
+    
+    def _handle_acc(self, handle, data):
+		#print handle,data
+		if handle == 23:
+			d_acc = self._unpack_acc_channel(data)
+            #print d_acc 
+            """10 data
+            d_acc[0] = counter
+            d_acc[1] = x
+            d_acc[2] = y
+            d_acc[3] = z
+            
+            d_acc[4] = x?
+            d_acc[5] = y?
+            d_acc[6] = z?
+            
+            d_acc[7] = x?
+            d_acc[8] = y?
+            d_acc[9] = z?
+            
+            """
+            
+			"""Average"""
+			self.acc_x = (d_acc[1]+d_acc[4]+d_acc[7])/3
+			self.acc_y = (d_acc[2]+d_acc[5]+d_acc[8])/3
+			self.acc_z = (d_acc[3]+d_acc[6]+d_acc[9])/3
+			"""return data"""
+			self.acc_data(self.acc_x,self.acc_y,self.acc_z)
+			
+    def _handle_gyro(self, handle, data):
+		#print handle,data
+		if handle == 20:
+			d_gyro = self._unpack_gyro_channel(data)
+			"""Average"""
+			self.gyro_x = (d_gyro[1]+d_gyro[4]+d_gyro[7])/3
+			self.gyro_y = (d_gyro[2]+d_gyro[5]+d_gyro[8])/3
+			self.gyro_z = (d_gyro[3]+d_gyro[6]+d_gyro[9])/3
+			self.gyro_data(self.gyro_x,self.gyro_y,self.gyro_z)
+    
     def _handle_eeg(self, handle, data):
         """Callback for receiving a sample.
 
